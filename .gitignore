@@ -1,0 +1,19 @@
+# Credentials -- never commit
+.env
+.env.*
+!.env.example
+
+# Downloaded SkillCorner data (large, re-downloadable via scripts/)
+data/
+data/Liverpool/
+
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Partial downloads
+*.part
