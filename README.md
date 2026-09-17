@@ -96,6 +96,8 @@ the new team name. The app picks up any `data/<Team>` folder automatically.
 
 ## Credits
 
+This code written by Ágúst Pálmason Morthens, with some adjustments by David Sumpter 
+
 - Pitch control implementation: Laurie Shaw (@EightyFivePoint)
 - Pitch control methodology: William Spearman, *Beyond Expected Goals*, MIT Sloan 2018
 - Streamlit app and freeze-frame generation: @gustimorth
