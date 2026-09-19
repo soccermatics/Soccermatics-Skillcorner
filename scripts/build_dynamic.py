@@ -19,11 +19,24 @@ import pandas as pd
 import sc_paths
 
 
-def build_matches(team: str) -> pd.DataFrame:
-    """matches.parquet: id, date_time, home_team/away_team as dicts (app unpacks them)."""
+def build_matches(team: str, usable_ids=None) -> pd.DataFrame:
+    """matches.parquet: id, date_time, home_team/away_team as dicts (app unpacks them).
+
+    ``usable_ids`` restricts the list to matches that actually have dynamic events.
+    SkillCorner permanently refuses a few matches with 400 "Data does not meet the
+    quality standard required for usage", and the app is built entirely around
+    selecting a pass -- so a match with no events would only offer the user a dead
+    end. Their raw tracking stays on disk for anyone who wants it.
+    """
     path = sc_paths.team_dir(team) / 'reference' / 'matches.json'
     with open(path, encoding='utf-8') as fh:
         matches = json.load(fh)
+    if usable_ids is not None:
+        dropped = [m for m in matches if m['id'] not in usable_ids]
+        for m in dropped:
+            print(f'    excluding {m["id"]} ({m["date_time"][:10]} vs '
+                  f'{m["away_team"]["short_name"]}) -- no dynamic events')
+        matches = [m for m in matches if m['id'] in usable_ids]
     df = pd.DataFrame(matches).sort_values('date_time').reset_index(drop=True)
     out = sc_paths.team_dir(team) / 'matches.parquet'
     df.to_parquet(out, index=False)
@@ -60,15 +73,17 @@ def build_dynamic(team: str, match_id) -> int:
 
 def main():
     team = sys.argv[1] if len(sys.argv) > 1 else 'Liverpool'
-    build_matches(team)
     ids = sc_paths.match_ids(team)
-    print(f'\nmerging dynamic events for {len(ids)} matches')
-    total = 0
+    print(f'merging dynamic events for {len(ids)} matches')
+    total, usable = 0, set()
     for i, match_id in enumerate(ids, 1):
         n = build_dynamic(team, match_id)
         total += n
+        if n:
+            usable.add(match_id)
         print(f'  [{i}/{len(ids)}] {match_id}  {n:,} events', flush=True)
-    print(f'\n{total:,} events across {len(ids)} matches')
+    build_matches(team, usable)
+    print(f'\n{total:,} events across {len(usable)}/{len(ids)} matches')
 
 
 if __name__ == '__main__':

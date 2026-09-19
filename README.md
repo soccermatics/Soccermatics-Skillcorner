@@ -4,22 +4,46 @@ Interactive exploration of SkillCorner tracking and dynamic-event data for one
 team's home matches. The analysis code comes from the Soccermatics course; the data
 comes from this repo's own downloader or the course's Dropbox folder.
 
-Currently loaded: **Liverpool**, all 19 home matches, ENG Premier League 2025/2026.
+All 20 Premier League teams of 2025/2026 are available, each with its own 19
+home matches.
+
+## Work with one team at a time
+
+**You only need one team's folder.** Each is self-contained — its own matches,
+tracking, events and reference data — and weighs about 400 MB. The full set of
+20 teams is 7.9 GB, which you almost certainly do not want.
+
+From the course Dropbox folder (`Shared Skillcorner`), copy the single team you
+are working on into `data/` here, so you end up with `data/Liverpool/` or
+`data/Arsenal/` and nothing else. In Dropbox you can use selective sync to
+download just that one folder rather than the whole share. The app lists
+whichever team folders it finds, so adding a second team later is just a matter
+of copying it in.
 
 ## Quick start
 
+Using data from the course Dropbox folder:
+
 ```bash
 python3.11 -m venv .venv
-.venv/bin/pip install skillcorner -r requirements.txt pyarrow
+.venv/bin/pip install -r requirements.txt pyarrow
 
-.venv/bin/python scripts/download_liverpool.py      # raw data  (~220 MB)
-cd scripts
-../.venv/bin/python build_dynamic.py Liverpool      # matches.parquet + dynamic/
-../.venv/bin/python create_freeze_frames.py Liverpool
-../.venv/bin/python create_velocities.py Liverpool
-cd ..
+mkdir -p data
+cp -R ~/Dropbox/"Shared Skillcorner"/Liverpool data/   # your team, ~400 MB
 
 .venv/bin/streamlit run app/st_dynamic.py
+```
+
+That folder already contains the derived files, so there is nothing to build.
+
+Downloading from the API instead — this needs your own SkillCorner account with
+access to the 2025/2026 Premier League, and credentials in a `.env` file
+(`SKILLCORNER_USERNAME` / `SKILLCORNER_PASSWORD`):
+
+```bash
+.venv/bin/pip install skillcorner
+.venv/bin/python scripts/download_liverpool.py Liverpool   # or --all for 20 teams
+cd scripts && ../.venv/bin/python build_all.py Liverpool && cd ..
 ```
 
 Python **3.11+ is required** — `mplsoccer` imports `dataclasses.KW_ONLY`, which
@@ -40,12 +64,13 @@ app/
 ├── st_dynamic.py     Streamlit app (@gustimorth; adapted for team selection)
 └── PitchControl.py   Spearman (2018) pitch control, verbatim from the course
 scripts/
-├── download_liverpool.py    SkillCorner API -> data/Liverpool (resumable)
+├── download_liverpool.py    SkillCorner API -> data/<Team> (resumable; --all)
 ├── sc_paths.py              shared paths; hides raw-vs-derived layout
 ├── build_dynamic.py         matches.parquet + dynamic/{id}.parquet
 ├── create_freeze_frames.py  freeze/{id}.parquet  (from tracking + events)
-└── create_velocities.py     velocities/{id}.parquet (Savitzky-Golay smoothing)
-data/Liverpool/
+├── create_velocities.py     velocities/{id}.parquet (Savitzky-Golay smoothing)
+└── build_all.py             runs all three stages for one team or every team
+data/<Team>/
 ├── tracking/            {id}.json.gz   raw, gzipped (~8 MB/match)
 ├── match_metadata/      {id}.json      lineups, pitch size, kit colours, GKs
 ├── match_instructions/  {id}.json
@@ -76,6 +101,14 @@ identical across versions, so v3 is the only choice that gives one consistent
 dataset across all 19 matches. See `DYNAMIC_EVENTS_DATA_VERSION` in
 `scripts/download_liverpool.py`.
 
+**Two Brighton matches have no dynamic events.** `2059493` (vs Liverpool,
+21 Mar) and `2064053` (vs Chelsea, 21 Apr) return 400 "Data does not meet the
+quality standard required for usage" for every event type and every
+`data_version`. This is permanent on SkillCorner's side, not a download failure.
+Their tracking and metadata are intact, but they are left out of Brighton's
+`matches.parquet` so the app does not offer a match with no passes to select —
+Brighton therefore shows 17 matches rather than 19.
+
 **`phases_of_play` is excluded from `dynamic/`.** It has no `event_type` column,
 sits at a different granularity, and the app never reads it. The raw CSVs are
 still downloaded under `dynamic_events/phases_of_play/`.
@@ -89,9 +122,20 @@ errors and is resumable, so re-running it fills any gaps.
 
 ## Adding another team
 
-The downloader is currently hard-coded to Liverpool home matches
-(`TEAM_SHORT_NAME`). Change it, re-run, then re-run the three build scripts with
-the new team name. The app picks up any `data/<Team>` folder automatically.
+Copy another team's folder from the course Dropbox into `data/` and the app
+picks it up automatically — the sidebar lists whatever it finds.
+
+To pull one from the API instead:
+
+```bash
+.venv/bin/python scripts/download_liverpool.py "Aston Villa"
+cd scripts && ../.venv/bin/python build_all.py "Aston Villa"
+```
+
+Team names must match SkillCorner's `short_name` exactly (`Manchester U`,
+`Nottingham`, `Brentford FC`); `reference/teams.json` lists them. Every match in
+the competition is exactly one team's home match, so the 20 teams partition the
+380-match season with no duplication.
 
 ## Credits
 

@@ -1,4 +1,12 @@
-"""Download all available SkillCorner data for Liverpool home matches (PL 2025/26).
+"""Download all available SkillCorner data for a team's home matches (PL 2025/26).
+
+Every match in the competition is exactly one team's home match, so downloading
+all 20 teams covers the full 380-match season with no duplication.
+
+Usage:
+    python scripts/download_liverpool.py                # Liverpool (default)
+    python scripts/download_liverpool.py Arsenal        # one team
+    python scripts/download_liverpool.py --all          # every team in the edition
 
 Resumable: skips any file already on disk, so it is safe to re-run after an
 interruption. Tracking data is stored gzipped (lossless, ~10x smaller).
@@ -13,9 +21,15 @@ import warnings
 warnings.filterwarnings('ignore')
 from skillcorner.client import SkillcornerClient
 
-ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'Liverpool')
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_ROOT = os.path.join(REPO_ROOT, 'data')
 COMPETITION_EDITION = 1198  # ENG - Premier League - 2025/2026
-TEAM_SHORT_NAME = 'Liverpool'
+DEFAULT_TEAM = 'Liverpool'
+
+
+def team_root(team_short_name):
+    """Data directory for one team, with '/' made filesystem-safe."""
+    return os.path.join(DATA_ROOT, team_short_name.replace('/', '-'))
 
 # Dynamic events must be pinned to a data_version. The default (v1) is missing
 # entirely for the last 6 home matches ("have not been processed"), and where it
@@ -29,7 +43,7 @@ DYNAMIC_EVENTS_DATA_VERSION = 3
 def make_client():
     """Read credentials from .env (tolerates quoting and the 'passwrod' typo)."""
     env = {}
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    path = os.path.join(REPO_ROOT, '.env')
     with open(path) as fh:
         for line in fh:
             if '=' in line:
@@ -73,11 +87,17 @@ def fetch(path, loader, writer):
             writer(tmp, loader())
             break
         except Exception as exc:                          # noqa: BLE001
-            transient = any(
-                marker in type(exc).__name__ or marker in str(exc)
-                for marker in ('ConnectionError', 'Connection aborted', 'IncompleteRead',
-                               'RemoteDisconnected', 'Timeout', 'timed out')
-            )
+            text = f'{type(exc).__name__} {exc}'
+            # 502/503/504 are gateway hiccups and 'Connection reset by peer' is a
+            # dropped socket -- both are worth retrying. A 400 "Data does not meet
+            # the quality standard" is SkillCorner's permanent refusal, so it must
+            # NOT match here or the run wastes four attempts on every such file.
+            transient = any(marker in text for marker in (
+                'ConnectionError', 'ConnectionReset', 'Connection aborted',
+                'Connection reset', 'IncompleteRead', 'RemoteDisconnected',
+                'Timeout', 'timed out', 'Errno 54', 'Errno 104',
+                '(502', '(503', '(504', 'Bad Gateway', 'Service Unavailable',
+            ))
             if not transient or attempt == RETRIES:
                 raise
             print(f'      retry {attempt}/{RETRIES - 1} after {type(exc).__name__}', flush=True)
@@ -86,34 +106,23 @@ def fetch(path, loader, writer):
     return os.path.getsize(path)
 
 
-def main():
-    client = make_client()
+def download_team(client, team_short_name, all_matches, reference_loaders):
+    """Download every data type for one team's home matches. Returns (bytes, failures)."""
+    ROOT = team_root(team_short_name)
 
     def dyn(method, match_id):
         """Dynamic-events call pinned to DYNAMIC_EVENTS_DATA_VERSION."""
         return method(match_id=match_id, params={'data_version': DYNAMIC_EVENTS_DATA_VERSION})
 
-    matches = [
-        m for m in client.get_matches(params={'competition_edition': COMPETITION_EDITION})
-        if m['home_team']['short_name'] == TEAM_SHORT_NAME
-    ]
+    matches = [m for m in all_matches if m['home_team']['short_name'] == team_short_name]
     matches.sort(key=lambda m: m['date_time'])
-    print(f'{len(matches)} Liverpool home matches', flush=True)
+    print(f'\n=== {team_short_name}: {len(matches)} home matches ===', flush=True)
 
-    # --- reference data (once, not per match) ---
+    # --- reference data (once per team, so each folder is self-contained) ---
     ref = os.path.join(ROOT, 'reference')
     os.makedirs(ref, exist_ok=True)
-    for name, loader in [
-        ('teams', lambda: client.get_teams(params={'competition_edition': COMPETITION_EDITION})),
-        ('players', lambda: client.get_players(params={'competition_edition': COMPETITION_EDITION})),
-        ('competition_editions', lambda: [
-            e for e in client.get_competition_editions() if e['id'] == COMPETITION_EDITION
-        ]),
-        ('seasons', client.get_seasons),
-        ('matches', lambda: matches),
-    ]:
-        n = fetch(os.path.join(ref, f'{name}.json'), loader, write_json)
-        print(f'  reference/{name}.json {"skip" if n < 0 else f"{n/1e3:.0f} KB"}', flush=True)
+    for name, loader in list(reference_loaders) + [('matches', lambda: matches)]:
+        fetch(os.path.join(ref, f'{name}.json'), loader, write_json)
 
     # (subdir, filename suffix, writer, loader factory)
     TASKS = [
@@ -155,11 +164,47 @@ def main():
                 total += n
                 print(f'    {subdir:<36} {n/1e6:7.2f} MB  {time.time()-t0:5.1f}s', flush=True)
 
-    print(f'\ndownloaded {total/1e9:.2f} GB this run', flush=True)
-    if failures:
-        print(f'{len(failures)} failures:', flush=True)
-        for mid, sub, err in failures:
-            print(f'  {mid} {sub}: {err}', flush=True)
+    return total, failures
+
+
+def main():
+    args = [a for a in sys.argv[1:]]
+    client = make_client()
+
+    all_matches = client.get_matches(params={'competition_edition': COMPETITION_EDITION})
+
+    # Fetched once and reused for every team, rather than per team.
+    reference_loaders = [
+        ('teams', lambda: client.get_teams(params={'competition_edition': COMPETITION_EDITION})),
+        ('players', lambda: client.get_players(params={'competition_edition': COMPETITION_EDITION})),
+        ('competition_editions', lambda: [
+            e for e in client.get_competition_editions() if e['id'] == COMPETITION_EDITION
+        ]),
+        ('seasons', client.get_seasons),
+    ]
+
+    if args and args[0] == '--all':
+        teams = sorted({m['home_team']['short_name'] for m in all_matches})
+    elif args:
+        teams = [args[0]]
+    else:
+        teams = [DEFAULT_TEAM]
+
+    print(f'{len(all_matches)} matches in edition {COMPETITION_EDITION}; '
+          f'{len(teams)} team(s) to download', flush=True)
+
+    grand_total, all_failures = 0, []
+    for t_i, team in enumerate(teams, 1):
+        print(f'\n########## team {t_i}/{len(teams)} ##########', flush=True)
+        total, failures = download_team(client, team, all_matches, reference_loaders)
+        grand_total += total
+        all_failures += [(team,) + f for f in failures]
+
+    print(f'\ndownloaded {grand_total/1e9:.2f} GB this run across {len(teams)} team(s)', flush=True)
+    if all_failures:
+        print(f'{len(all_failures)} failures:', flush=True)
+        for team, mid, sub, err in all_failures:
+            print(f'  {team} {mid} {sub}: {err}', flush=True)
         return 1
     print('all files present', flush=True)
     return 0
