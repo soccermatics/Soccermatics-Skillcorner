@@ -13,12 +13,11 @@ home matches.
 tracking, events and reference data — and weighs about 400 MB. The full set of
 20 teams is 7.9 GB, which you almost certainly do not want.
 
-From the course Dropbox folder (`Shared Skillcorner`), copy the single team you
-are working on into `data/` here, so you end up with `data/Liverpool/` or
-`data/Arsenal/` and nothing else. In Dropbox you can use selective sync to
-download just that one folder rather than the whole share. The app lists
-whichever team folders it finds, so adding a second team later is just a matter
-of copying it in.
+From the course Dropbox link, open the folder for the single team you are
+working on and download **just that folder** — not the whole share, which is
+7.9 GB. Unzip it into `data/` here, so you end up with `data/Liverpool/` or
+`data/Arsenal/` and nothing else. The app lists whichever team folders it
+finds, so adding a second team later is just a matter of copying it in.
 
 ## Quick start
 
