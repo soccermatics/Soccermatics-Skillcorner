@@ -21,19 +21,28 @@ finds, so adding a second team later is just a matter of copying it in.
 
 ## Quick start
 
-Using data from the course Dropbox folder:
+Using data from the course Dropbox link:
 
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt pyarrow
 
+# Open the Dropbox link, go into your team's folder and download it (~400 MB).
+# Dropbox gives you a zip; unpack it so the team folder sits inside data/:
 mkdir -p data
-cp -R ~/Dropbox/"Shared Skillcorner"/Liverpool data/   # your team, ~400 MB
+unzip ~/Downloads/Liverpool.zip -d data/
+
+ls data/Liverpool/matches.parquet     # sanity check: this should exist
+# If the zip unpacked flat (tracking/, dynamic/ ... straight into data/),
+# move those directories into data/Liverpool/ instead.
 
 .venv/bin/streamlit run app/st_dynamic.py
 ```
 
 That folder already contains the derived files, so there is nothing to build.
+
+The Dropbox link is handed out with the course material and is deliberately
+**not** stored in this repository -- please do not commit it.
 
 Downloading from the API instead — this needs your own SkillCorner account with
 access to the 2025/2026 Premier League, and credentials in a `.env` file
