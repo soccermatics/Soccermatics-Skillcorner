@@ -1,9 +1,8 @@
 # SkillCorner — Team Home Games
 
 Interactive exploration of SkillCorner tracking and dynamic-event data for one
-team's home matches. The analysis code comes from the Soccermatics course
-(originally written against a Real Madrid dataset); the data comes from this
-repo's own downloader.
+team's home matches. The analysis code comes from the Soccermatics course; the data
+comes from this repo's own downloader or the course's Dropbox folder.
 
 Currently loaded: **Liverpool**, all 19 home matches, ENG Premier League 2025/2026.
 
