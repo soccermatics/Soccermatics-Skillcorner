@@ -405,25 +405,22 @@ def plot_frame(df_frame, pitch_length, pitch_width, only_detected, df_events, sh
 
 df_matches = get_matches(DATA_FOLDER)
 
-# Show the match data as a dataframe and allow the user to select a match from it by clicking on it.
-st.write("Select a match(es) from the list below:")
-selected_matches = st.dataframe(
-    df_matches[["Match", "Date"]],
-    hide_index=True,
-    on_select="rerun",
-    selection_mode="multi-row",
-)
+# One match at a time, chosen in the sidebar. This used to be a multi-row
+# dataframe selection, which concatenated the events of every selected match --
+# so a pass from a previously selected fixture could still be picked, and the
+# plot would then correctly show that other fixture. A single-select dropdown
+# removes the ambiguity.
+match_labels = [
+    f"{row.Date}  {row.Match}" for row in df_matches.itertuples()
+]
+match_label = st.sidebar.selectbox("Match", match_labels, index=0)
+match_row = df_matches.iloc[match_labels.index(match_label)]
+match_id = match_row["id"]
 
-# Get the selected match(es) from the dataframe
-selected_matches = df_matches.iloc[selected_matches["selection"]["rows"]]
-
-# Get the selected match id(s)
-if len(selected_matches) == 0:
-    st.info("Select a match to proceed with the analysis.")
-    st.stop()
-
-selected_match_ids = selected_matches["id"].tolist()
+selected_match_ids = [match_id]
 df_events = get_dynamic_data(DATA_FOLDER, selected_match_ids)
+
+st.subheader(f"{match_row['Match']} - {match_row['Date']}")
 with st.expander("Dynamic events", expanded=False):
     st.dataframe(df_events)
 
@@ -440,15 +437,17 @@ selected_event = st.dataframe(
     hide_index=True,
     on_select="rerun",
     selection_mode="single-row",
+    # Keyed on the match so switching fixture clears the previous row selection
+    # instead of carrying a stale row index into the new pass list.
+    key=f"pass_table_{team}_{match_id}",
 )
 
 selected_event = df_player_possessions.iloc[selected_event["selection"]["rows"]]
 if len(selected_event) == 0:
     st.info("Select a pass to proceed with the analysis.")
     st.stop()
-# Get the event_id and match_id of the selected event
+# Get the event_id of the selected event (match_id comes from the sidebar choice)
 event_id = selected_event.event_id.values[0]
-match_id = selected_event.match_id.values[0]
 
 # Get the event itself
 df_event = df_player_possessions[
@@ -473,6 +472,7 @@ dynamic_events = st.dataframe(
     hide_index=True,
     on_select="rerun",
     selection_mode="multi-row",
+    key=f"assoc_events_{team}_{match_id}_{event_id}",
 )
 # Extract the selected events
 df_events_to_plot = df_event.iloc[dynamic_events["selection"]["rows"]]
